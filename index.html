@@ -93,6 +93,7 @@ button.act{background:var(--gold);color:#1a1a1a;font-weight:700;border:none}
 <div class="tabs" id="tabs">
   <div class="tab active" data-v="upload" onclick="showTab('upload')">📥 取込</div>
   <div class="tab" data-v="overview" onclick="showTab('overview')">📋 一覧</div>
+  <div class="tab" data-v="month" onclick="showTab('month')">📅 月別</div>
   <div class="tab" data-v="store" onclick="showTab('store')">🏪 店舗別</div>
   <div class="tab" data-v="kpi" onclick="showTab('kpi')">🎯 KPI達成</div>
 </div>
@@ -135,6 +136,17 @@ button.act{background:var(--gold);color:#1a1a1a;font-weight:700;border:none}
     </div>
   </div>
 
+  <!-- 月別 -->
+  <div class="view" id="v-month">
+    <div class="panel">
+      <div class="flex">
+        <h3 style="margin:0">月別 提出状況</h3>
+        <select id="fMonthTab" class="right" onchange="renderMonth()"></select>
+      </div>
+      <div id="monthDetail"></div>
+    </div>
+  </div>
+
   <!-- 店舗別 -->
   <div class="view" id="v-store">
     <div class="panel">
@@ -142,6 +154,7 @@ button.act{background:var(--gold);color:#1a1a1a;font-weight:700;border:none}
         <h3 style="margin:0">店舗別 課題推移</h3>
         <select id="fStore" class="right" onchange="renderStore()"></select>
       </div>
+      <div id="storeSummary"></div>
       <div id="storeDetail"></div>
     </div>
   </div>
@@ -183,6 +196,7 @@ function showTab(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.getElementById('v-'+v).classList.add('active');
   if(v==='overview')renderOverview();
+  if(v==='month')renderMonth();
   if(v==='store')renderStore();
   if(v==='kpi')renderKpi();
   if(v==='upload')renderUpload();
@@ -264,11 +278,26 @@ function renderUpload(){
     <div class="stat"><div class="n">${DB.filter(d=>d.month===[...months].sort().pop()).length}</div><div class="l">最新月 提出数</div></div>`;
   const list=document.getElementById('recentList');
   if(!DB.length){list.innerHTML='<div class="empty">まだ取り込まれていません。PDFをドロップしてください。</div>';return;}
-  list.innerHTML='<table><thead><tr><th>店舗</th><th>月</th><th>担当</th><th>取込日時</th><th></th></tr></thead><tbody>'+
-    DB.slice().reverse().map(d=>`<tr>
+  list.innerHTML='<table><thead><tr><th></th><th>店舗</th><th>月</th><th>担当</th><th>取込日時</th><th></th></tr></thead><tbody>'+
+    DB.slice().reverse().map(d=>`<tr class="click" onclick="toggleRow('${d.id}')">
+      <td class="small" style="width:20px"><span id="arw-${d.id}">▸</span></td>
       <td><b>${d.store}</b></td><td>${d.month}</td><td>${d.am}</td>
       <td class="small">${d.imported}</td>
-      <td><span class="del" onclick="delRep('${d.id}')">削除</span></td></tr>`).join('')+'</tbody></table>';
+      <td><span class="del" onclick="event.stopPropagation();delRep('${d.id}')">削除</span></td></tr>
+    <tr id="row-${d.id}" style="display:none"><td></td><td colspan="5">
+      <div class="detail-issue" style="margin:6px 0">
+        <h4>${d.store}　${d.month}　<span class="chip">${d.file}</span></h4>
+        <div class="lbl">■ 現状課題</div><p contenteditable class="editable" onblur="upd('${d.id}','issue',this)">${d.issue}</p>
+        <div class="lbl">■ 改善報告（前月）</div><p contenteditable class="editable" onblur="upd('${d.id}','improve',this)">${d.improve}</p>
+        <div class="lbl">■ 今月のアクション</div><p contenteditable class="editable" onblur="upd('${d.id}','action',this)">${d.action}</p>
+        <div class="lbl">■ KPI・目標</div><p contenteditable class="editable" onblur="upd('${d.id}','kpi',this)">${d.kpi}</p>
+      </div></td></tr>`).join('')+'</tbody></table>';
+}
+function toggleRow(id){
+  const r=document.getElementById('row-'+id), a=document.getElementById('arw-'+id);
+  const open=r.style.display==='none';
+  r.style.display=open?'table-row':'none';
+  if(a)a.textContent=open?'▾':'▸';
 }
 function delRep(id){DB=DB.filter(d=>d.id!==id);save();renderUpload();refreshFilters();toast('削除しました');}
 
@@ -286,15 +315,59 @@ function renderOverview(){
 }
 function trunc(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s;}
 function gotoStore(st){showTab('store');document.getElementById('fStore').value=st;renderStore();}
+function gotoStoreMonth(st,m){showTab('store');document.getElementById('fStore').value=st;renderStore(m);}
+
+// ====== 月別 ======
+function renderMonth(){
+  const m=document.getElementById('fMonthTab').value;
+  const el=document.getElementById('monthDetail');
+  const months=[...new Set(DB.map(d=>d.month))].sort().reverse();
+  if(!DB.length){el.innerHTML='<div class="empty">データなし</div>';return;}
+  const targetMonths=m?[m]:months;
+  el.innerHTML=targetMonths.map(mm=>{
+    const rows=DB.filter(d=>d.month===mm).sort((a,b)=>a.store<b.store?-1:1);
+    return `<div style="margin-bottom:26px">
+      <div class="flex" style="border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:10px">
+        <h4 style="margin:0;color:var(--gold);font-size:16px">📅 ${mm}</h4>
+        <span class="chip right">${rows.length}店舗 提出</span>
+      </div>
+      <table><thead><tr><th></th><th>店舗</th><th>担当</th><th>主要課題</th><th>KPI</th><th></th></tr></thead><tbody>${
+        rows.map(d=>`<tr class="click" onclick="toggleMRow('${d.id}')">
+          <td class="small" style="width:20px"><span id="marw-${d.id}">▸</span></td>
+          <td><b>${d.store}</b></td><td>${d.am}</td>
+          <td>${trunc(d.issue,34)}</td><td>${trunc(d.kpi,26)}</td>
+          <td class="small" onclick="event.stopPropagation();gotoStore('${d.store}')">店舗推移 ▸</td></tr>
+        <tr id="mrow-${d.id}" style="display:none"><td></td><td colspan="5">
+          <div class="detail-issue" style="margin:6px 0">
+            <div class="lbl">■ 現状課題</div><p>${d.issue}</p>
+            <div class="lbl">■ 改善報告（前月）</div><p>${d.improve}</p>
+            <div class="lbl">■ 今月のアクション</div><p>${d.action}</p>
+            <div class="lbl">■ KPI・目標</div><p>${d.kpi}</p>
+          </div></td></tr>`).join('')
+      }</tbody></table></div>`;
+  }).join('');
+}
+function toggleMRow(id){
+  const r=document.getElementById('mrow-'+id),a=document.getElementById('marw-'+id);
+  const open=r.style.display==='none';
+  r.style.display=open?'table-row':'none';if(a)a.textContent=open?'▾':'▸';
+}
 
 // ====== 店舗別 ======
-function renderStore(){
+function renderStore(highlightMonth){
   const st=document.getElementById('fStore').value;
   const rows=DB.filter(d=>d.store===st).sort((a,b)=>a.month<b.month?1:-1);
+  const sum=document.getElementById('storeSummary');
   const el=document.getElementById('storeDetail');
-  if(!rows.length){el.innerHTML='<div class="empty">店舗を選択してください</div>';return;}
+  if(!rows.length){sum.innerHTML='';el.innerHTML='<div class="empty">店舗を選択してください</div>';return;}
+  // タイムライン（提出月の一覧）
+  sum.innerHTML=`<div class="detail-issue" style="background:var(--panel2)">
+    <h4>🏪 ${st}　提出履歴（${rows.length}ヶ月分）</h4>
+    <div>${rows.slice().reverse().map(d=>`<span class="chip">${d.month}</span>`).join('')}</div>
+    <div class="small" style="margin-top:8px">最新提出：${rows[0].month}　担当：${rows[0].am}</div>
+  </div>`;
   el.innerHTML=rows.map(d=>`
-    <div class="detail-issue">
+    <div class="detail-issue" ${highlightMonth&&d.month===highlightMonth?'style="border-color:var(--gold)"':''}>
       <h4>${d.month}　担当：${d.am}　<span class="chip">${d.file}</span></h4>
       <div class="lbl">■ 現状課題</div><p contenteditable class="editable" onblur="upd('${d.id}','issue',this)">${d.issue}</p>
       <div class="lbl">■ 改善報告（前月）</div><p contenteditable class="editable" onblur="upd('${d.id}','improve',this)">${d.improve}</p>
@@ -317,8 +390,9 @@ function refreshFilters(){
   const months=[...new Set(DB.map(d=>d.month))].sort().reverse();
   const stores=[...new Set(DB.map(d=>d.store))].sort();
   fill('fMonth',['',...months],'全ての月');
+  fill('fMonthTab',['',...months],'全ての月');
   fill('fStore',stores,null);
-  renderUpload();renderOverview();renderStore();renderKpi();
+  renderUpload();renderOverview();renderMonth();renderStore();renderKpi();
 }
 function fill(id,vals,allLabel){
   const s=document.getElementById(id);const cur=s.value;
