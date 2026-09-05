@@ -221,30 +221,39 @@ function between(t,start,end){
   const e=end?t.indexOf(end,from):-1;
   return (e<0?t.slice(from):t.slice(from,e)).trim();
 }
-function clean(s){return (s||'').replace(/\s+/g,' ')
-  .replace(/\d{4}\/\d{2}\/\d{2}.*?cona-houkoku\/\s*\d\/\d/g,'')
-  .replace(/まだ保存されていません/g,'').replace(/課題改善報告_CONA.*?\d{6}/g,'').trim();}
+// フッター（日付・URL・保存メッセージ）を除去
+function footer(s){return (s||'')
+  .replace(/\d{4}\/\d{2}\/\d{2}\d{2}:\d{2}課題改善報告_CONA.+?cona-houkoku\/\d\/\d/g,'')
+  .replace(/\d{4}\/\d{2}\/\d{2}.*?cona-houkoku\/?\s*\d\/\d/g,'')
+  .replace(/まだ保存されていません/g,'')
+  .replace(/課題改善報告_CONA.*?\d{6}/g,'')
+  .replace(/https?:\/\/[^\s]+/g,'').trim();}
 
 function parseReport(text,filename){
-  // 店舗名
-  let store=(text.match(/CONA([^\s　|]+?)\s*エリア店舗/)||[])[1]
-    || (text.match(/\*\*CONA([^\s*]+)/)||[])[1]
+  // PDF.jsは文字間に空白が入ることがあるため、全空白を除去して確実に一致させる
+  const t=text.replace(/\s+/g,'');
+  // 店舗名（マークダウン記号や空白は除外）
+  let store=(t.match(/CONA([^*＊|｜]+?)エリア店舗/)||[])[1]
     || (filename.match(/^([^_]+)/)||[])[1] || '不明店舗';
+  store=store.replace(/[*＊\s　]/g,'').trim();
   // 提出月
-  let ym=text.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*提出/);
+  let ym=t.match(/(\d{4})年(\d{1,2})月\s*提出/);
   let month = ym ? `${ym[1]}/${String(ym[2]).padStart(2,'0')}`
     : (filename.match(/(\d{4})(\d{2})/)||[]).slice(1,3).join('/')||'不明';
   // 担当AM
-  let am=(text.match(/担当[：:]\s*([^\s　0-9]+)/)||[])[1]||'—';
-  // 各セクション
-  const issue=clean(between(text,'課題・問題点を自由に記入してください','【改善'))
-    ||clean(between(text,'1 現状課題','【改善'));
-  const improve=clean(between(text,'反省点','【アクション'))
-    ||clean(between(text,'成果・反省点','【アクション'));
-  const action=clean(between(text,'重点的に取り組むこと','【KPI'))
-    ||clean(between(text,'今月のアクションプラン','【KPI'));
-  let kpi=clean(between(text,'数値目標・指標',''))
-    ||clean(between(text,'達成目標・KPI',''));
+  let am=(t.match(/担当[：:]([^：\d*＊|｜]+?)\d{4}年/)||[])[1]
+    || (t.match(/担当[：:]([^：\d*＊|｜\s]{1,10})/)||[])[1] || '—';
+  am=am.replace(/[*＊\s　]/g,'').trim()||'—';
+  // 各セクション（複数パターンでフォールバック）
+  const issue=footer(between(t,'記入してください','【改善')
+    ||between(t,'現状課題','【改善'));
+  const improve=footer(between(t,'成果・反省点','【アクション')
+    ||between(t,'反省点','【アクション'));
+  const action=footer(between(t,'今月重点的に取り組むこと','【KPI')
+    ||between(t,'アクションプラン','【KPI'));
+  const kpi=footer(between(t,'数値目標・指標','まだ保存')
+    ||between(t,'数値目標・指標','')
+    ||between(t,'達成目標・KPI','まだ保存'));
   return {id:store+'_'+month, store, month, am,
     issue:issue||'（未抽出）', improve:improve||'（未抽出）',
     action:action||'（未抽出）', kpi:kpi||'（未抽出）',
