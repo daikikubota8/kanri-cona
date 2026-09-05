@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AM改善報告ダッシュボード｜CONA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{
+  --gold:#c9a24b; --gold2:#e6c877;
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+  --txt:#e9ecf1; --sub:#9aa3b0; --accent:#4fa9ff;
+  --good:#3ecf8e; --warn:#f5b942; --bad:#f2657a;
+}
+[data-theme="light"]{
+  --bg:#f5f6f9; --panel:#ffffff; --panel2:#f0f2f6; --line:#e2e6ee;
+  --txt:#1d2330; --sub:#5c6675; --accent:#2a7fe0;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI","Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
+  background:var(--bg);color:var(--txt);transition:.25s}
+header{background:linear-gradient(135deg,#12141a,#1c2029);
+  border-bottom:2px solid var(--gold);padding:18px 26px;display:flex;
+  align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+[data-theme="light"] header{background:linear-gradient(135deg,#fff,#eef1f6)}
+.brand{display:flex;align-items:center;gap:14px}
+.brand .logo{width:42px;height:42px;border-radius:10px;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex;align-items:center;justify-content:center;font-weight:800;color:#1a1a1a;font-size:20px}
+.brand h1{font-size:19px;margin:0;letter-spacing:.5px}
+.brand small{color:var(--sub);font-size:12px}
+.toggle{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+  border-radius:20px;padding:8px 16px;cursor:pointer;font-size:13px}
+.tabs{display:flex;gap:6px;padding:14px 26px 0;flex-wrap:wrap;background:var(--bg)}
+.tab{padding:10px 18px;border-radius:10px 10px 0 0;background:var(--panel2);
+  border:1px solid var(--line);border-bottom:none;cursor:pointer;font-size:14px;color:var(--sub)}
+.tab.active{background:var(--panel);color:var(--gold);font-weight:700;border-color:var(--gold)}
+.wrap{padding:22px 26px 60px;max-width:1280px;margin:0 auto}
+.view{display:none;animation:fade .3s}
+.view.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.drop{border:2px dashed var(--gold);border-radius:16px;padding:38px;text-align:center;
+  background:var(--panel);cursor:pointer;transition:.2s}
+.drop.hover{background:var(--panel2);border-color:var(--gold2)}
+.drop h2{margin:6px 0;color:var(--gold)}
+.drop p{color:var(--sub);margin:4px 0;font-size:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;margin-top:22px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.stat .n{font-size:30px;font-weight:800;color:var(--gold)}
+.stat .l{color:var(--sub);font-size:13px;margin-top:4px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:20px}
+.panel h3{margin:0 0 14px;font-size:16px;border-left:4px solid var(--gold);padding-left:10px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--sub);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--panel2)}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700}
+.b-ok{background:rgba(62,207,142,.15);color:var(--good)}
+.b-wait{background:rgba(245,185,66,.15);color:var(--warn)}
+.chip{display:inline-block;background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:4px 10px;font-size:12px;margin:2px}
+.empty{text-align:center;color:var(--sub);padding:40px}
+.bar{height:20px;background:var(--panel2);border-radius:10px;overflow:hidden;margin-top:6px}
+.bar span{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2))}
+select,button.act{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+  border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
+button.act{background:var(--gold);color:#1a1a1a;font-weight:700;border:none}
+.detail-issue{background:var(--panel2);border-radius:12px;padding:16px;margin:12px 0;border:1px solid var(--line)}
+.detail-issue h4{margin:0 0 8px;color:var(--gold);font-size:15px}
+.detail-issue .lbl{color:var(--accent);font-weight:700;font-size:12px;margin-top:10px}
+.detail-issue p{margin:4px 0;font-size:13px;line-height:1.7;color:var(--txt);white-space:pre-wrap}
+.editable{border:1px dashed transparent;border-radius:6px;padding:2px 4px}
+.editable:focus{outline:none;border-color:var(--gold);background:var(--panel)}
+.small{font-size:12px;color:var(--sub)}
+.flex{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.right{margin-left:auto}
+.del{color:var(--bad);cursor:pointer;font-size:12px}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
+  background:var(--gold);color:#1a1a1a;padding:12px 22px;border-radius:10px;font-weight:700;
+  box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:99;display:none}
+</style>
+</head>
+<body data-theme="dark">
+<header>
+  <div class="brand">
+    <div class="logo">AM</div>
+    <div><h1>AM改善報告ダッシュボード</h1><small>CONA エリア課題・改善管理｜PDF自動取込</small></div>
+  </div>
+  <button class="toggle" onclick="toggleTheme()">☀️ / 🌙</button>
+</header>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-v="upload" onclick="showTab('upload')">📥 取込</div>
+  <div class="tab" data-v="overview" onclick="showTab('overview')">📋 一覧</div>
+  <div class="tab" data-v="store" onclick="showTab('store')">🏪 店舗別</div>
+  <div class="tab" data-v="kpi" onclick="showTab('kpi')">🎯 KPI達成</div>
+</div>
+
+<div class="wrap">
+
+  <!-- 取込 -->
+  <div class="view active" id="v-upload">
+    <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+      <div style="font-size:44px">📄</div>
+      <h2>PDFをドラッグ＆ドロップ</h2>
+      <p>AMから提出された「課題改善報告」PDFをここに入れるだけで自動解析されます</p>
+      <p class="small">複数ファイル同時可 ／ 店舗名・提出月・課題・改善・アクション・KPIを自動抽出</p>
+      <input type="file" id="file" accept="application/pdf" multiple style="display:none">
+    </div>
+    <div class="cards" id="statCards"></div>
+    <div class="panel">
+      <div class="flex">
+        <h3 style="margin:0">取込済みレポート</h3>
+        <div class="right flex">
+          <button class="act" onclick="exportData()">💾 バックアップ書出</button>
+          <button class="toggle" onclick="document.getElementById('imp').click()">↩ 復元</button>
+          <input type="file" id="imp" accept="application/json" style="display:none">
+        </div>
+      </div>
+      <div id="recentList"></div>
+    </div>
+  </div>
+
+  <!-- 一覧 -->
+  <div class="view" id="v-overview">
+    <div class="panel">
+      <div class="flex">
+        <h3 style="margin:0">提出一覧</h3>
+        <select id="fMonth" class="right" onchange="renderOverview()"></select>
+      </div>
+      <table><thead><tr>
+        <th>店舗</th><th>提出月</th><th>担当AM</th><th>主要課題</th><th>KPI</th><th>状態</th><th></th>
+      </tr></thead><tbody id="ovBody"></tbody></table>
+    </div>
+  </div>
+
+  <!-- 店舗別 -->
+  <div class="view" id="v-store">
+    <div class="panel">
+      <div class="flex">
+        <h3 style="margin:0">店舗別 課題推移</h3>
+        <select id="fStore" class="right" onchange="renderStore()"></select>
+      </div>
+      <div id="storeDetail"></div>
+    </div>
+  </div>
+
+  <!-- KPI -->
+  <div class="view" id="v-kpi">
+    <div class="panel">
+      <h3>KPI達成状況（PDFから自動抽出）</h3>
+      <table><thead><tr>
+        <th>店舗</th><th>月</th><th>KPI目標</th>
+      </tr></thead><tbody id="kpiBody"></tbody></table>
+    </div>
+  </div>
+
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ====== ストレージ ======
+const KEY='cona_am_reports_v1';
+let DB=JSON.parse(localStorage.getItem(KEY)||'[]');
+function save(){localStorage.setItem(KEY,JSON.stringify(DB));}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.display='block';
+  clearTimeout(window._tt);window._tt=setTimeout(()=>t.style.display='none',2200);}
+
+// ====== テーマ ======
+function toggleTheme(){const b=document.body;
+  b.dataset.theme=b.dataset.theme==='dark'?'light':'dark';
+  localStorage.setItem('am_theme',b.dataset.theme);}
+document.body.dataset.theme=localStorage.getItem('am_theme')||'dark';
+
+// ====== タブ ======
+function showTab(v){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.v===v));
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+  document.getElementById('v-'+v).classList.add('active');
+  if(v==='overview')renderOverview();
+  if(v==='store')renderStore();
+  if(v==='kpi')renderKpi();
+  if(v==='upload')renderUpload();
+}
+
+// ====== PDF解析 ======
+async function extractText(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let full='';
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const c=await page.getTextContent();
+    full+=c.items.map(it=>it.str).join(' ')+'\n';
+  }
+  return full;
+}
+
+function between(t,start,end){
+  const s=t.indexOf(start); if(s<0)return'';
+  const from=s+start.length;
+  const e=end?t.indexOf(end,from):-1;
+  return (e<0?t.slice(from):t.slice(from,e)).trim();
+}
+function clean(s){return (s||'').replace(/\s+/g,' ')
+  .replace(/\d{4}\/\d{2}\/\d{2}.*?cona-houkoku\/\s*\d\/\d/g,'')
+  .replace(/まだ保存されていません/g,'').replace(/課題改善報告_CONA.*?\d{6}/g,'').trim();}
+
+function parseReport(text,filename){
+  // 店舗名
+  let store=(text.match(/CONA([^\s　|]+?)\s*エリア店舗/)||[])[1]
+    || (text.match(/\*\*CONA([^\s*]+)/)||[])[1]
+    || (filename.match(/^([^_]+)/)||[])[1] || '不明店舗';
+  // 提出月
+  let ym=text.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*提出/);
+  let month = ym ? `${ym[1]}/${String(ym[2]).padStart(2,'0')}`
+    : (filename.match(/(\d{4})(\d{2})/)||[]).slice(1,3).join('/')||'不明';
+  // 担当AM
+  let am=(text.match(/担当[：:]\s*([^\s　0-9]+)/)||[])[1]||'—';
+  // 各セクション
+  const issue=clean(between(text,'課題・問題点を自由に記入してください','【改善'))
+    ||clean(between(text,'1 現状課題','【改善'));
+  const improve=clean(between(text,'反省点','【アクション'))
+    ||clean(between(text,'成果・反省点','【アクション'));
+  const action=clean(between(text,'重点的に取り組むこと','【KPI'))
+    ||clean(between(text,'今月のアクションプラン','【KPI'));
+  let kpi=clean(between(text,'数値目標・指標',''))
+    ||clean(between(text,'達成目標・KPI',''));
+  return {id:store+'_'+month, store, month, am,
+    issue:issue||'（未抽出）', improve:improve||'（未抽出）',
+    action:action||'（未抽出）', kpi:kpi||'（未抽出）',
+    file:filename, imported:new Date().toLocaleString('ja-JP')};
+}
+
+async function handleFiles(files){
+  let n=0;
+  for(const f of files){
+    if(f.type!=='application/pdf')continue;
+    try{
+      const t=await extractText(f);
+      const r=parseReport(t,f.name);
+      const idx=DB.findIndex(x=>x.id===r.id);
+      if(idx>=0)DB[idx]=r; else DB.push(r);
+      n++;
+    }catch(e){console.error(e);toast('解析失敗: '+f.name);}
+  }
+  save();renderUpload();refreshFilters();
+  toast(n+'件のレポートを取込・反映しました');
+}
+
+// ====== 描画：取込画面 ======
+function renderUpload(){
+  const stores=new Set(DB.map(d=>d.store));
+  const months=new Set(DB.map(d=>d.month));
+  document.getElementById('statCards').innerHTML=`
+    <div class="stat"><div class="n">${DB.length}</div><div class="l">総レポート数</div></div>
+    <div class="stat"><div class="n">${stores.size}</div><div class="l">対象店舗</div></div>
+    <div class="stat"><div class="n">${months.size}</div><div class="l">対象月</div></div>
+    <div class="stat"><div class="n">${DB.filter(d=>d.month===[...months].sort().pop()).length}</div><div class="l">最新月 提出数</div></div>`;
+  const list=document.getElementById('recentList');
+  if(!DB.length){list.innerHTML='<div class="empty">まだ取り込まれていません。PDFをドロップしてください。</div>';return;}
+  list.innerHTML='<table><thead><tr><th>店舗</th><th>月</th><th>担当</th><th>取込日時</th><th></th></tr></thead><tbody>'+
+    DB.slice().reverse().map(d=>`<tr>
+      <td><b>${d.store}</b></td><td>${d.month}</td><td>${d.am}</td>
+      <td class="small">${d.imported}</td>
+      <td><span class="del" onclick="delRep('${d.id}')">削除</span></td></tr>`).join('')+'</tbody></table>';
+}
+function delRep(id){DB=DB.filter(d=>d.id!==id);save();renderUpload();refreshFilters();toast('削除しました');}
+
+// ====== 一覧 ======
+function renderOverview(){
+  const fm=document.getElementById('fMonth').value;
+  const rows=DB.filter(d=>!fm||d.month===fm);
+  const b=document.getElementById('ovBody');
+  if(!rows.length){b.innerHTML='<tr><td colspan="7" class="empty">データなし</td></tr>';return;}
+  b.innerHTML=rows.map(d=>`<tr class="click" onclick="gotoStore('${d.store}')">
+    <td><b>${d.store}</b></td><td>${d.month}</td><td>${d.am}</td>
+    <td>${trunc(d.issue,40)}</td><td>${trunc(d.kpi,30)}</td>
+    <td><span class="badge b-ok">提出済</span></td>
+    <td class="small">詳細 ▸</td></tr>`).join('');
+}
+function trunc(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s;}
+function gotoStore(st){showTab('store');document.getElementById('fStore').value=st;renderStore();}
+
+// ====== 店舗別 ======
+function renderStore(){
+  const st=document.getElementById('fStore').value;
+  const rows=DB.filter(d=>d.store===st).sort((a,b)=>a.month<b.month?1:-1);
+  const el=document.getElementById('storeDetail');
+  if(!rows.length){el.innerHTML='<div class="empty">店舗を選択してください</div>';return;}
+  el.innerHTML=rows.map(d=>`
+    <div class="detail-issue">
+      <h4>${d.month}　担当：${d.am}　<span class="chip">${d.file}</span></h4>
+      <div class="lbl">■ 現状課題</div><p contenteditable class="editable" onblur="upd('${d.id}','issue',this)">${d.issue}</p>
+      <div class="lbl">■ 改善報告（前月）</div><p contenteditable class="editable" onblur="upd('${d.id}','improve',this)">${d.improve}</p>
+      <div class="lbl">■ 今月のアクション</div><p contenteditable class="editable" onblur="upd('${d.id}','action',this)">${d.action}</p>
+      <div class="lbl">■ KPI・目標</div><p contenteditable class="editable" onblur="upd('${d.id}','kpi',this)">${d.kpi}</p>
+    </div>`).join('');
+}
+function upd(id,field,el){const d=DB.find(x=>x.id===id);if(d){d[field]=el.textContent.trim();save();}}
+
+// ====== KPI ======
+function renderKpi(){
+  const b=document.getElementById('kpiBody');
+  if(!DB.length){b.innerHTML='<tr><td colspan="3" class="empty">データなし</td></tr>';return;}
+  b.innerHTML=DB.slice().sort((a,b)=>a.month<b.month?1:-1).map(d=>`<tr>
+    <td><b>${d.store}</b></td><td>${d.month}</td><td>${d.kpi}</td></tr>`).join('');
+}
+
+// ====== フィルタ更新 ======
+function refreshFilters(){
+  const months=[...new Set(DB.map(d=>d.month))].sort().reverse();
+  const stores=[...new Set(DB.map(d=>d.store))].sort();
+  fill('fMonth',['',...months],'全ての月');
+  fill('fStore',stores,null);
+  renderUpload();renderOverview();renderStore();renderKpi();
+}
+function fill(id,vals,allLabel){
+  const s=document.getElementById(id);const cur=s.value;
+  s.innerHTML=vals.map(v=>`<option value="${v}">${v===''?allLabel:v}</option>`).join('');
+  if([...s.options].some(o=>o.value===cur))s.value=cur;
+}
+
+// ====== バックアップ ======
+function exportData(){
+  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='am_reports_backup.json';a.click();toast('バックアップを書き出しました');}
+document.getElementById('imp').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{DB=JSON.parse(await f.text());save();refreshFilters();toast('復元しました');}
+  catch(_){toast('ファイルが不正です');}});
+
+// ====== ドロップ操作 ======
+const drop=document.getElementById('drop');
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hover');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hover');}));
+drop.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));
+document.getElementById('file').addEventListener('change',e=>handleFiles(e.target.files));
+
+// 初期化
+refreshFilters();
+</script>
+</body>
+</html>
