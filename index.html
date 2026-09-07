@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AM改善報告ダッシュボード｜CONA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 :root{
   /* 明るく読みやすいライトテーマ（デフォルト） */
@@ -206,6 +207,7 @@ function showTab(v){
 }
 
 // ====== PDF解析 ======
+// PDF.jsによる通常のテキスト抽出
 async function extractText(file){
   const buf=await file.arrayBuffer();
   const pdf=await pdfjsLib.getDocument({data:buf}).promise;
@@ -217,12 +219,69 @@ async function extractText(file){
   }
   return full;
 }
+// OCR（画像文字認識）フォールバック：フォント不具合や文字順の乱れに強い
+async function extractTextOCR(file,onProgress){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let full='';
+  const worker=await Tesseract.createWorker('jpn');
+  try{
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i);
+      const vp=page.getViewport({scale:2.2}); // 高解像度で認識精度UP
+      const canvas=document.createElement('canvas');
+      canvas.width=vp.width;canvas.height=vp.height;
+      await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+      if(onProgress)onProgress(i,pdf.numPages);
+      const {data}=await worker.recognize(canvas);
+      full+=data.text+'\n';
+    }
+  }finally{await worker.terminate();}
+  return full;
+}
+// 抽出結果が使えるか判定（主要な見出しが含まれているか）
+function looksExtractable(text){
+  const t=(text||'').replace(/\s+/g,'');
+  return t.includes('現状課題')||t.includes('記入してください')||t.includes('アクションプラン');
+}
+// 解析結果の「未抽出」数を数える
+function unresolvedCount(r){
+  return ['issue','improve','action','kpi'].filter(k=>!r[k]||r[k]==='（未抽出）').length;
+}
 
 function between(t,start,end){
   const s=t.indexOf(start); if(s<0)return'';
   const from=s+start.length;
   const e=end?t.indexOf(end,from):-1;
   return (e<0?t.slice(from):t.slice(from,e)).trim();
+}
+// 候補語のうち、指定位置以降で最初に見つかったインデックスを返す（無ければ-1）
+function firstIdx(t,words,after){
+  after=(after&&after>0)?after:0;let best=-1;
+  for(const w of words){const i=t.indexOf(w,after);
+    if(i>=0&&(best<0||i<best))best=i;}
+  return best;
+}
+// 候補語のうち、指定位置以降で最初に見つかった語の「直後」インデックスを返す
+function idxAfter(t,words,after){
+  after=(after&&after>0)?after:0;let best=-1,bl=0;
+  for(const w of words){const i=t.indexOf(w,after);
+    if(i>=0&&(best<0||i<best)){best=i;bl=w.length;}}
+  return best<0?-1:best+bl;
+}
+// start位置からend位置までを切り出す（end<0なら末尾まで）
+function cut(t,start,end){
+  if(start<0)return'';
+  const to=(end>start)?end:t.length;
+  return t.slice(start,to).trim();
+}
+// 末尾に紛れ込む次セクションの見出し断片（改善1・アクション1・KPI1・数字等）を除去
+function tidyTail(s){
+  return (s||'')
+    .replace(/(改善報告?|振り返り|アクションプラン?|今月のアクション|達成目標|数値目標)\d*$/,'')
+    .replace(/[〖【\[]?(改善|アクション|KPI|ＫＰＩ)[〗】\]]?\s*\d*$/,'')
+    .replace(/\s*\d{1,2}$/,'')
+    .trim();
 }
 // 中黒などの表記ゆれを統一（· U+00B7, ･ U+FF65 → ・ U+30FB）
 function norm(x){return (x||'').replace(/[·･]/g,'・');}
@@ -254,16 +313,21 @@ function parseReport(text,filename){
   let am=(t.match(/担当[：:]([^：:\d*＊|｜]+?)\d{4}年/)||[])[1]
     || (t.match(/担当[：:]([^：:\d*＊|｜\s]{1,10})/)||[])[1] || '—';
   am=am.replace(/[*＊\s　]/g,'').trim()||'—';
-  // 各セクション：中黒に依存しない安定した区切り語で抽出
-  const issue=footer(between(t,'記入してください','【改善')
-    ||between(t,'現状課題','【改善'));
-  const improve=footer(between(t,'反省点','【アクション')
-    ||between(t,'前月分)','【アクション'));
-  const action=footer(between(t,'取り組むこと','〖KPI〗')
-    ||between(t,'アクションプラン','〖KPI〗'));
-  const kpi=footer(between(t,'指標','まだ保存')
-    ||between(t,'指標','')
-    ||between(t,'〖KPI〗','まだ保存'));
+  // 各セクションを「説明文の末尾フレーズの直後」から「次セクション見出しの直前」まで順次抽出
+  // 開始語は各説明文の“最後の語”を1つだけ使う（タイトル側から始まらないように）
+  const iStart=idxAfter(t,['記入してください'],0);                       // 課題の答え開始
+  const impHdr=firstIdx(t,['【改善','改善報告','振り返り'],iStart);      // 改善セクション見出し
+  const impStart=idxAfter(t,['反省点'],impHdr>=0?impHdr:iStart);
+  const actHdr=firstIdx(t,['【アクション','アクションプラン','今月のアクション'],impStart);
+  const actStart=idxAfter(t,['取り組むこと'],actHdr>=0?actHdr:impStart);
+  const kpiHdr=firstIdx(t,['〖KPI〗','達成目標','数値目標'],actStart);
+  const kpiStart=idxAfter(t,['指標'],kpiHdr>=0?kpiHdr:actStart);
+  const endAll=firstIdx(t,['まだ保存'],kpiStart>=0?kpiStart:0);
+
+  const issue=tidyTail(footer(cut(t,iStart,impHdr)));
+  const improve=tidyTail(footer(cut(t,impStart,actHdr)));
+  const action=tidyTail(footer(cut(t,actStart,kpiHdr)));
+  const kpi=tidyTail(footer(cut(t,kpiStart,endAll)));
   return {id:store+'_'+month, store, month, am,
     issue:norm(issue)||'（未抽出）', improve:norm(improve)||'（未抽出）',
     action:norm(action)||'（未抽出）', kpi:norm(kpi)||'（未抽出）',
@@ -271,19 +335,30 @@ function parseReport(text,filename){
 }
 
 async function handleFiles(files){
-  let n=0;
+  let n=0, ocrUsed=0;
   for(const f of files){
     if(f.type!=='application/pdf')continue;
     try{
-      const t=await extractText(f);
-      const r=parseReport(t,f.name);
+      // ① まず高速なテキスト抽出
+      let t=await extractText(f);
+      let r=parseReport(t,f.name);
+      // ② テキストが崩れている／未抽出が多い場合はOCRで再解析
+      if(!looksExtractable(t)||unresolvedCount(r)>=2){
+        toast('📷 '+f.name.replace(/_?\d*\.pdf$/i,'')+' をOCR解析中…（初回は少し時間がかかります）');
+        const ot=await extractTextOCR(f,(p,tot)=>{
+          toast('📷 OCR解析中… '+f.name.replace(/_?\d*\.pdf$/i,'')+'（'+p+'/'+tot+'ページ）');
+        });
+        const or=parseReport(ot,f.name);
+        // OCRの方が多く抽出できたら採用
+        if(unresolvedCount(or)<unresolvedCount(r)){r=or;ocrUsed++;}
+      }
       const idx=DB.findIndex(x=>x.id===r.id);
       if(idx>=0)DB[idx]=r; else DB.push(r);
       n++;
     }catch(e){console.error(e);toast('解析失敗: '+f.name);}
   }
   save();refreshFilters();
-  toast(n+'件のレポートを取込・反映しました');
+  toast(n+'件を取込・反映しました'+(ocrUsed?'（うち'+ocrUsed+'件はOCRで読取）':''));
 }
 
 // ====== 取込画面 ======
